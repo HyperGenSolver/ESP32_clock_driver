@@ -1,21 +1,26 @@
 #include "WIFI_receiver.h"
-
 // Debug Clock ESP32 MAC address: 24:6f:28:24:75:1c
 // True Clock ESP32 MAC address: e0:e2:e6:0d:72:14
-//temperature_data_struct incomingData;
+
 
 static const char *TAG = "ESP-NOW Receiver";
 QueueHandle_t temperature_data_queue;
+const uint8_t Waveshare_E_Ink_mac[] = {0x24, 0x6F, 0x28, 0x24, 0x75, 0x1C}; 
+
 
 // Callback when data is received
 void on_data_receive(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len) {
     static temperature_data_struct incDat;
     memcpy(&incDat, data, sizeof(incDat));
-
     if (xQueueOverwrite(temperature_data_queue, &incDat) != pdPASS) {
         ESP_LOGE("Queue", "Failed to send temperature data to queue");
     }
 }
+void on_data_sent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    ESP_LOGI(TAG, "Last Packet Send Status: %s", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+
+
 void get_mac_address()
 {
     uint8_t mac[6];
@@ -43,5 +48,11 @@ void init_esp_now() {
     // Initialize ESP-NOW
     ESP_ERROR_CHECK(esp_now_init());
     ESP_ERROR_CHECK(esp_now_register_recv_cb(on_data_receive));
+    ESP_ERROR_CHECK(esp_now_register_send_cb(on_data_sent));
     
+    // Init ESP-NOW peer
+    esp_now_peer_info_t peerInfo_Eink = {}; 
+    memcpy(peerInfo_Eink.peer_addr, Waveshare_E_Ink_mac, 6);
+    ESP_ERROR_CHECK(esp_now_add_peer(&peerInfo_Eink));
+
 }

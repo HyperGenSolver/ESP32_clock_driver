@@ -13,14 +13,15 @@
 #include "esp_async_memcpy.h"
 
 
+
 typedef struct temperature_data_struct { //structure of the latest temperature data stored locally
     int id;
-    int sec_since_last_update;
+    int time;
     float temperature_outside;
-    float temperature_inside;
 } temperature_data_struct;
 
 void on_data_receive(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len);
+void on_data_sent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void get_mac_address();
 void init_esp_now();
 

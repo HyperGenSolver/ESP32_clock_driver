@@ -33,17 +33,17 @@ void set_time_task(void *pvParameters)
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
-void display_nixi_and_temp(void *pvParameters)
+// Display the time and temperature on the NIXI display and send the data to e-ink 
+void display_nixi_temp_send_to_eInk(void *pvParameters)
 {
   TickType_t xLastExecutionTime;
   xLastExecutionTime = xTaskGetTickCount();
-  static temperature_data_struct latest_temp_data = {-1, 0, 0, 0};
+  temperature_data_struct latest_temp_data = {-1, 0, 0};
   uint16_t ms_since_temp_update = 0;
-  uint8_t show_temp_state = 0; // 0 = show temp inside, 1 = show temp outside
   float temp_to_display;
   while (1)
   {
-    xQueueReceive(temperature_data_queue, &latest_temp_data, ( TickType_t ) 0); // get the latest temperature data
+    xQueueReceive(temperature_data_queue, &latest_temp_data, ( TickType_t ) 0); // get the latest temperature data and remove it from the queue
     if (ir_sm.time_set_mode)
     {
       set_colon_led(true);
@@ -52,16 +52,9 @@ void display_nixi_and_temp(void *pvParameters)
     }
     
     else if (latest_temp_data.id != -1 && ms_since_temp_update > MAX_DELAY_TEMP_UPDATE_DISPLAY){
-      switch (show_temp_state)
-      {
-      case 0:
-        temp_to_display = latest_temp_data.temperature_inside;
-        break;
-      
-      default:
-        temp_to_display = latest_temp_data.temperature_outside;
-        break;
-      }
+
+      temp_to_display = latest_temp_data.temperature_outside;
+
 
       bool temp_is_negative = temp_to_display < 0;
       if(temp_is_negative){
@@ -81,15 +74,21 @@ void display_nixi_and_temp(void *pvParameters)
         vTaskDelay(100 / portTICK_PERIOD_MS);
         toggle_colon_led();
       }
-      if(ms_since_temp_update > (MAX_DELAY_TEMP_UPDATE_DISPLAY + TIME_TEMPERATURE_IS_SHOWN )){
+      if(ms_since_temp_update > (MAX_DELAY_TEMP_UPDATE_DISPLAY + TIME_TEMPERATURE_IS_SHOWN )){ // Send the data to e-ink after a while
+        uint16_t time_hour = 0;
+        uint16_t time_min = 0;
+        uint16_t time_sec = 0;
+        get_system_time(&time_hour, &time_min, &time_sec);                                 // get the current time
+        encode_time_to_int(time_hour, time_min, time_sec, &latest_temp_data.time); // encode the time to int
+        esp_err_t result = esp_now_send(NULL, (uint8_t *)&latest_temp_data, sizeof(latest_temp_data)); // NULL as receiver means send to all peers
+        if (result != ESP_OK)
+        {
+          ESP_LOGE(TAG, "Error sending data: %d", result);
+        }
+      
+
         latest_temp_data.id = -1; // set current temperature data to outdated
         ms_since_temp_update = 0; // reset the time since last temperature update
-        if(show_temp_state == 0){
-          show_temp_state = 1;
-        }
-        else{
-          show_temp_state = 0;
-        }
 
       }
     }
@@ -135,7 +134,7 @@ void app_main(void)
   TaskHandle_t time_task_handle;
   TaskHandle_t display_nixi_and_temp_handle;
   xTaskCreate(set_time_task, "Set_time_task", 2048, NULL, 2, &time_task_handle);
-  xTaskCreate(display_nixi_and_temp, "display_nixi_task", 2024, NULL, 1, &display_nixi_and_temp_handle);
+  xTaskCreate(display_nixi_temp_send_to_eInk, "display_nixi_task", 2024, NULL, 1, &display_nixi_and_temp_handle);
   xTaskCreate(print_for_debugging, "display_time", 2048, NULL, 1, NULL);
   
 
